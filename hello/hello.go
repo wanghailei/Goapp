@@ -1,37 +1,73 @@
 package hello
 
-import "fmt"
+import "appengine"
+import "appengine/datastore"
+import "appengine/user"
 import "html/template"
 import "net/http"
+import "time"
+// import "fmt"
 
-const guestbookForm = `
-	<html><body><form action="/sign" method="post">
-		<div><textarea name="content" rows="3" cols="100"></textarea></div>
-		<div><input type="submit" value="Sign Guestbook"></div>
-	</form></body></html>`
+type Greeting struct {
+	Author string
+	Content string
+	Date time.Time
+}
 
+const guestbookTemplateHTML = `
+	<html><body>
+		{{range .}}
+			{{with .Author}}
+				<p><b>{{.}}</b> wrote:</p>
+			{{else}}
+				<p>An anonymous person wrote:</p>
+			{{end}}
+			<pre>{{.Content}}</pre>
+		{{end}}
+		<form action="/sign" method="post">
+			<div><textarea name="content" rows="3" cols="60"></textarea></div>
+			<div><input type="submit" value="Sign Guestbook"></div>
+		</form>
+	</body></html>`
+var guestbookTemplate = template.Must(template.New("book").Parse(guestbookTemplateHTML))
+								
 const signTemplateHTML = `
 	<html><body>
-		<p>You wrote:</p>
 		<pre>{{.}}</pre>
-	</body></html>
-	`
+	</body></html>`
 var signTemplate = template.Must(template.New("sign").Parse(signTemplateHTML))
 
 func init () {
-	http.HandleFunc("/", guest)
+	http.HandleFunc("/", index)
 	http.HandleFunc("/sign", sign)
 }
-	
-func guest (rep http.ResponseWriter, req *http.Request) {
-	fmt.Fprint(rep, guestbookForm)
+
+func index (rep http.ResponseWriter, req *http.Request) {
+	ctx := appengine.NewContext(req)
+	qry := datastore.NewQuery("Greeting").Order("-Date").Limit(10)
+	greetings := make([]Greeting, 0, 10)
+	if _, err := qry.GetAll(ctx, &greetings); err != nil {
+		http.Error(rep, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if err := guestbookTemplate.Execute(rep, greetings); err != nil {
+		http.Error(rep, err.Error(), http.StatusInternalServerError)
+	}
 }
 	
 func sign (rep http.ResponseWriter, req *http.Request) {
-	// The sign function gets the form data by calling r.FormValue.
-	// Then passes it to signTemplate.Execute that writes the rendered template to the http.ResponseWriter.
-	err := signTemplate.Execute(rep, req.FormValue("content"))
+	ctx := appengine.NewContext(req)
+	grt := Greeting {
+		Content:req.FormValue("content"),
+		Date:time.Now(),
+	}
+	if usr := user.Current(ctx); usr != nil {
+		grt.Author = usr.String()
+	}
+	_, err := datastore.Put(ctx, datastore.NewIncompleteKey(ctx, "Greeting", nil), &grt)
 	if err != nil {
 		http.Error(rep, err.Error(), http.StatusInternalServerError)
+		return
 	}
+	http.Redirect(rep, req, "/", http.StatusFound)
 }

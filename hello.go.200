@@ -1,0 +1,57 @@
+package hello
+
+import "appengine"
+import "appengine/user"
+import "fmt"
+import "html/template"
+import "net/http"
+
+const guestbookForm = `
+	<html><body><form action="/sign" method="post">
+		<div><textarea name="content" rows="3" cols="100"></textarea></div>
+		<div><input type="submit" value="Sign Guestbook"></div>
+	</form></body></html>
+	`
+
+const signTemplateHTML = `
+	<html><body>
+		<pre>{{.}}</pre>
+	</body></html>
+	`
+var signTemplate = template.Must(template.New("sign").Parse(signTemplateHTML))
+
+func init () {
+	http.HandleFunc("/", index)
+	http.HandleFunc("/sign", sign)
+}
+	
+func index (rep http.ResponseWriter, req *http.Request) {
+	ctx := appengine.NewContext(req)
+	usr := user.Current(ctx)
+	// The appengine.NewContext function returns an appengine.Context value associated with the current request.
+	if usr == nil {
+		// The user.LoginURL function returns an error value as its second argument.
+		url, err := user.LoginURL(ctx, req.URL.String())
+		if err != nil {
+			http.Error(rep, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		rep.Header().Set("Location", url)
+		rep.WriteHeader(http.StatusFound)
+		return
+	}
+	fmt.Fprint(rep, "Hello, %s !", usr)
+	fmt.Fprint(rep, guestbookForm)
+}
+	
+func sign (rep http.ResponseWriter, req *http.Request) {
+	ctx := appengine.NewContext(req)
+	usr := user.Current(ctx)	
+	// The sign function gets the form data by calling r.FormValue.
+	// Then passes it to signTemplate.Execute that writes the rendered template to the http.ResponseWriter.
+	err := signTemplate.Execute(rep, req.FormValue("content"))
+	if err != nil {
+		http.Error(rep, err.Error(), http.StatusInternalServerError)
+	}
+	fmt.Fprint(rep, "Posted by %v .", usr)
+}
