@@ -1,0 +1,35 @@
+package hello
+
+import "appengine"
+import "appengine/user"
+import "fmt"
+import "net/http"
+// import "rest/server"
+// import "github.com/nathankerr/rest"
+
+func init () {
+	http.HandleFunc("/", handleIndex)
+	http.HandleFunc("/login", handleLogin)
+}
+
+func handleIndex (rep http.ResponseWriter, req *http.Request) {
+	// The appengine.NewContext function returns an appengine.Context value associated with the current request.
+	ctx := appengine.NewContext(req)
+	usr := user.Current(ctx)
+	if usr == nil {
+		// The user.LoginURL function returns an error value as its second argument.
+		url, err := user.LoginURL(ctx, req.URL.String())
+		if err != nil {
+			http.Error(rep, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		rep.Header().Set("Location", url)
+		rep.WriteHeader(http.StatusFound)
+		return
+	}
+	fmt.Fprint(rep, "Hello, %v !", usr)
+}
+
+func handleLogin (rep http.ResponseWriter, req *http.Request) {
+	fmt.Fprint(rep, "<h1>Goapp Login</h1>")
+}
